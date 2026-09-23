@@ -122,4 +122,55 @@
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
     }
   });
+
+  document.querySelectorAll('.inspiration').forEach(section => {
+    const track = section.querySelector('.inspiration-grid');
+    const cards = [...section.querySelectorAll('.inspiration-card')];
+    if (!track || cards.length < 2) return;
+    track.tabIndex = 0;
+    track.setAttribute('role','region');
+    track.setAttribute('aria-label',`${cards.length} inspiration artworks. Swipe or use the arrow keys to browse.`);
+
+    const controls = document.createElement('div');
+    controls.className = 'gallery-controls';
+    controls.innerHTML = `<span class="gallery-status" aria-live="polite">1 of ${cards.length}</span><span class="gallery-buttons"><button type="button" data-gallery-prev aria-label="Previous artwork">←</button><button type="button" data-gallery-next aria-label="Next artwork">→</button></span>`;
+    track.after(controls);
+    const status = controls.querySelector('.gallery-status');
+    const previous = controls.querySelector('[data-gallery-prev]');
+    const next = controls.querySelector('[data-gallery-next]');
+    let current = 0;
+
+    const update = index => {
+      current = Math.max(0,Math.min(cards.length-1,index));
+      status.textContent = `${current+1} of ${cards.length}`;
+      previous.disabled = current === 0;
+      next.disabled = current === cards.length-1;
+    };
+    const move = index => {
+      update(index);
+      cards[current].scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest',inline:'start'});
+    };
+    previous.addEventListener('click',()=>move(current-1));
+    next.addEventListener('click',()=>move(current+1));
+    track.addEventListener('keydown',event=>{
+      if(event.key==='ArrowLeft'){event.preventDefault();move(current-1);}
+      if(event.key==='ArrowRight'){event.preventDefault();move(current+1);}
+    });
+    let ticking = false;
+    track.addEventListener('scroll',()=>{
+      if(ticking) return;
+      ticking = true;
+      requestAnimationFrame(()=>{
+        const viewportCenter = track.scrollLeft + track.clientWidth / 2;
+        const nearest = cards.reduce((best,card,index) => {
+          const cardCenter = card.offsetLeft + card.offsetWidth / 2;
+          const bestCenter = cards[best].offsetLeft + cards[best].offsetWidth / 2;
+          return Math.abs(cardCenter-viewportCenter) < Math.abs(bestCenter-viewportCenter) ? index : best;
+        },0);
+        update(nearest);
+        ticking = false;
+      });
+    },{passive:true});
+    update(0);
+  });
 })();
