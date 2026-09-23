@@ -70,7 +70,7 @@
     .sidebar-foot { margin-top: auto; padding-top: 22px; color: #8e8880; font-size: .75rem; }
     .sidebar-foot a { color: #d2cbc1; }
     .page { margin-left: var(--sidebar); }
-    .mobile-head, .phase-strip { display: none; }
+    .mobile-head, .phase-strip, .mobile-drawer { display: none; }
     .lesson-nav {
       position: sticky; top: 0; z-index: 12; height: 64px;
       border-bottom: 1px solid var(--line); background: rgba(247,244,238,.92);
