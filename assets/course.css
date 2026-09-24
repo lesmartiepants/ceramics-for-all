@@ -81,7 +81,10 @@
       flex: 0 0 auto; text-decoration: none; color: var(--muted); font-size: .78rem;
       padding: 9px 12px; border-radius: 999px;
     }
-    .lesson-nav a:hover, .lesson-nav a.current { background: var(--ink); color: var(--paper); }
+    .lesson-nav a.current { background: var(--ink); color: var(--paper); }
+    @media (hover: hover) and (pointer: fine) {
+      .lesson-nav a:hover { background: var(--ink); color: var(--paper); }
+    }
     main { overflow: hidden; }
     .hero {
       display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(320px, .92fr);
