@@ -124,23 +124,57 @@
     if (!trackingFrame) trackingFrame = requestAnimationFrame(trackSection);
   }
 
-  // Native fragment navigation is more reliable than scripted scrolling on
-  // iOS Safari, especially beneath stacked sticky navigation.
-  function syncFromHash() {
-    const id = decodeURIComponent(location.hash.slice(1));
-    if (sections.some(section => section.id === id)) {
-      setCurrent(id);
-      // Let the browser complete its anchor positioning before reading the
-      // viewport and reconciling the active tab.
-      requestAnimationFrame(scheduleTracking);
+  let requestedSection = '';
+  function sectionAtViewport() {
+    if (requestedSection) return requestedSection;
+    if (!sections.length) return '';
+    const line = navOffset() + 24;
+    let current = sections[0];
+    for (const section of sections) {
+      if (sectionHeading(section).getBoundingClientRect().top <= line) current = section;
+      else break;
+    }
+    return current.id;
+  }
+
+  function alignToHeading(section, attempt = 0) {
+    const heading = sectionHeading(section);
+    const top = Math.max(0, Math.round(window.scrollY + heading.getBoundingClientRect().top - navOffset()));
+    // Numeric scrollTo is supported by Safari and avoids the invalid/nonportable
+    // behavior modes that caused the earlier navigation race.
+    window.scrollTo(0, top);
+    if (attempt < 2) {
+      requestAnimationFrame(() => alignToHeading(section, attempt + 1));
       return;
     }
+    requestedSection = '';
     scheduleTracking();
   }
+
+  function navigateToSection(section, writeHash) {
+    requestedSection = section.id;
+    setCurrent(section.id);
+    if (writeHash && location.hash !== '#' + section.id) history.pushState(null, '', '#' + section.id);
+    alignToHeading(section);
+  }
+
+  navLinks.forEach(link => link.addEventListener('click', event => {
+    const section = document.getElementById(link.hash.slice(1));
+    if (!section) return;
+    event.preventDefault();
+    navigateToSection(section, true);
+  }));
   window.addEventListener('scroll', scheduleTracking, { passive: true });
   window.addEventListener('resize', scheduleTracking, { passive: true });
-  window.addEventListener('hashchange', syncFromHash);
-  syncFromHash();
+  window.addEventListener('hashchange', () => {
+    const id = decodeURIComponent(location.hash.slice(1));
+    const section = sections.find(candidate => candidate.id === id);
+    if (section) navigateToSection(section, false);
+    else scheduleTracking();
+  });
+  const initial = sections.find(section => section.id === decodeURIComponent(location.hash.slice(1)));
+  if (initial) requestAnimationFrame(() => navigateToSection(initial, false));
+  else scheduleTracking();
 
   const trigger = document.querySelector('[data-menu-button],#menuButton');
   const drawer = document.querySelector('[data-menu-drawer],#mobileDrawer');
