@@ -722,44 +722,84 @@
   const quiz = QUIZZES[phase];
   if (!quiz) return;
   const target = shell.querySelector('[data-quiz-body]');
-  const escape = value => String(value).replace(/[&<>"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char]));
-  target.innerHTML = `<form class="quiz-form" novalidate>${quiz.questions.map((q, index) => `
-    <fieldset class="quiz-question" data-question="${escape(q.id)}">
-      <legend><span class="module-index">Question ${index + 1} of ${quiz.questions.length}</span><br>${escape(q.question)}</legend>
-      ${q.options.map(o => `<label class="quiz-option"><input type="radio" name="${escape(q.id)}" value="${escape(o.value)}"><span>${escape(o.value)} · ${escape(o.label)}</span><span class="quiz-feedback">${escape(o.feedback)}</span></label>`).join('')}
-      <details class="quiz-hint"><summary>Need a hint?</summary><p>${escape(q.hint)}</p></details>
-      <p class="quiz-question-status" data-question-status></p>
-    </fieldset>`).join('')}
-    <div class="quiz-actions"><button class="button" type="submit">Check my answers</button><button class="button secondary" type="button" data-quiz-reset>Try again</button><p class="quiz-result" data-quiz-result aria-live="polite"></p></div>
+  const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const intro = shell.querySelector('.quiz-intro');
+  if (intro) intro.textContent = 'One question at a time. Use Previous and Next to review your choices, then check all answers for your results.';
+
+  target.innerHTML = `<form class="quiz-form" novalidate>
+    <p class="quiz-step" data-quiz-step aria-live="polite"></p>
+    ${quiz.questions.map((q, index) => `
+      <fieldset class="quiz-question" data-question="${escape(q.id)}" ${index ? 'hidden' : ''}>
+        <legend class="sr-only">Question ${index + 1} of ${quiz.questions.length}: ${escape(q.question)}</legend>
+        <p class="module-index">Question ${index + 1} of ${quiz.questions.length}</p>
+        <h3 class="quiz-prompt">${escape(q.question)}</h3>
+        ${q.options.map(o => `<label class="quiz-option"><input type="radio" name="${escape(q.id)}" value="${escape(o.value)}"><span>${escape(o.value)} · ${escape(o.label)}</span></label>`).join('')}
+        <details class="quiz-hint"><summary>Need a hint?</summary><p>${escape(q.hint)}</p></details>
+      </fieldset>`).join('')}
+    <div class="quiz-actions" data-quiz-actions>
+      <button class="button secondary" type="button" data-quiz-prev>← Previous</button>
+      <button class="button" type="button" data-quiz-next>Next →</button>
+      <button class="button" type="submit" data-quiz-submit hidden>Check answers</button>
+    </div>
+    <p class="quiz-result review" data-quiz-message role="status" aria-live="polite"></p>
+    <section class="quiz-summary" data-quiz-summary hidden tabindex="-1" aria-label="Quiz results"></section>
+    <button class="button secondary quiz-restart" type="button" data-quiz-reset hidden>Try again</button>
   </form>`;
+
   const form = target.querySelector('form');
-  const result = target.querySelector('[data-quiz-result]');
+  const fields = [...form.querySelectorAll('.quiz-question')];
+  const step = form.querySelector('[data-quiz-step]');
+  const actions = form.querySelector('[data-quiz-actions]');
+  const previous = form.querySelector('[data-quiz-prev]');
+  const next = form.querySelector('[data-quiz-next]');
+  const submit = form.querySelector('[data-quiz-submit]');
+  const message = form.querySelector('[data-quiz-message]');
+  const summary = form.querySelector('[data-quiz-summary]');
+  const restart = form.querySelector('[data-quiz-reset]');
+  let current = 0;
+
+  function showQuestion(index, focus = true) {
+    current = Math.max(0, Math.min(fields.length - 1, index));
+    fields.forEach((field, i) => { field.hidden = i !== current; });
+    step.textContent = `Question ${current + 1} of ${fields.length}`;
+    previous.hidden = current === 0;
+    next.hidden = current === fields.length - 1;
+    submit.hidden = current !== fields.length - 1;
+    message.textContent = '';
+    if (focus) fields[current].querySelector('.quiz-prompt')?.focus({preventScroll:true});
+  }
+  fields.forEach(field => field.querySelector('.quiz-prompt').tabIndex = -1);
+  previous.addEventListener('click', () => showQuestion(current - 1));
+  next.addEventListener('click', () => showQuestion(current + 1));
+
   function showResults(answers, persist = true, focus = true) {
     let score = 0;
     let criticalMiss = false;
-    quiz.questions.forEach((q, index) => {
+    const rows = quiz.questions.map((q, index) => {
       const selected = answers[q.id];
       const correct = selected === q.correct;
       if (correct) score++;
       if (q.critical && !correct) criticalMiss = true;
-      const fieldset = form.querySelector(`[data-question="${q.id}"]`);
-      fieldset.querySelectorAll(`[name="${q.id}"]`).forEach(input => {
-        const label = input.closest('.quiz-option');
-        label.classList.add('revealed');
-        label.classList.toggle('correct', input.value === q.correct);
-        label.classList.toggle('incorrect', input.checked && input.value !== q.correct);
-        input.toggleAttribute('aria-invalid', input.checked && input.value !== q.correct);
-      });
-      const status = fieldset.querySelector('[data-question-status]');
-      status.textContent = correct ? `Question ${index + 1}: correct.` : `Question ${index + 1}: review. The correct answer is ${q.correct}.`;
-      status.className = `quiz-question-status ${correct ? 'correct' : 'incorrect'}`;
+      const selectedOption = q.options.find(o => o.value === selected);
+      const correctOption = q.options.find(o => o.value === q.correct);
+      return `<article class="quiz-summary-item ${correct ? 'is-correct' : 'needs-review'}">
+        <p class="module-index">Question ${index + 1} · ${correct ? 'Correct' : 'Review'}</p>
+        <h4>${escape(q.question)}</h4>
+        <p><strong>Your answer:</strong> ${selectedOption ? `${escape(selected)} · ${escape(selectedOption.label)}` : 'Not answered'}</p>
+        <p><strong>Correct answer:</strong> ${escape(q.correct)} · ${escape(correctOption.label)}</p>
+        <p class="quiz-explanation">${escape(correctOption.feedback)}</p>
+      </article>`;
     });
-    const thresholdMet = score >= Math.ceil(quiz.questions.length * 2 / 3);
-    const pass = thresholdMet && !criticalMiss;
-    const message = criticalMiss ? 'Review the safety-critical question before continuing.' : pass ? 'Strong result. Continue when the practical work also meets its rubric.' : 'Review the explanations and try once more.';
-    result.textContent = `${score}/${quiz.questions.length} — ${message}`;
-    result.className = `quiz-result ${pass ? 'pass' : 'review'}`;
-    if (focus) { result.tabIndex = -1; result.focus(); }
+    const pass = score >= Math.ceil(quiz.questions.length * 2 / 3) && !criticalMiss;
+    const note = criticalMiss ? 'Review the safety-critical question before continuing.' : pass ? 'Strong result. Continue when the practical work also meets its rubric.' : 'Review the explanations and try once more.';
+    summary.innerHTML = `<p class="kicker">Your results</p><h3>${score} of ${quiz.questions.length} correct</h3><p class="quiz-outcome">${escape(note)}</p><div class="quiz-summary-list">${rows.join('')}</div>`;
+    fields.forEach(field => field.hidden = true);
+    step.hidden = true;
+    actions.hidden = true;
+    message.textContent = '';
+    summary.hidden = false;
+    restart.hidden = false;
+    if (focus) summary.focus({preventScroll:true});
     if (persist) {
       try {
         const key = 'handbuilding-course-v1';
@@ -770,25 +810,24 @@
       } catch (_) {}
     }
   }
+
   form.addEventListener('submit', event => {
     event.preventDefault();
-    const unanswered = quiz.questions.filter(q => !form.elements[q.id].value);
-    if (unanswered.length) {
-      result.textContent = `Answer all ${quiz.questions.length} questions before checking.`;
-      result.className = 'quiz-result review';
-      form.querySelector(`[data-question="${unanswered[0].id}"] input`)?.focus();
+    const unanswered = quiz.questions.find(q => !form.elements[q.id].value);
+    if (unanswered) {
+      showQuestion(quiz.questions.indexOf(unanswered));
+      message.textContent = 'Choose an answer for this question before checking.';
       return;
     }
     showResults(Object.fromEntries(quiz.questions.map(q => [q.id, form.elements[q.id].value])));
   });
-  target.querySelector('[data-quiz-reset]').addEventListener('click', () => {
+  restart.addEventListener('click', () => {
     form.reset();
-    form.querySelectorAll('.quiz-option').forEach(label => label.classList.remove('revealed','correct','incorrect'));
-    form.querySelectorAll('[aria-invalid]').forEach(input => input.removeAttribute('aria-invalid'));
-    form.querySelectorAll('[data-question-status]').forEach(status => { status.textContent=''; status.className='quiz-question-status'; });
-    result.textContent = '';
-    result.className = 'quiz-result';
-    result.removeAttribute('tabindex');
+    summary.hidden = true;
+    restart.hidden = true;
+    step.hidden = false;
+    actions.hidden = false;
+    showQuestion(0);
     try {
       const key = 'handbuilding-course-v1';
       const state = JSON.parse(localStorage.getItem(key) || '{}');
@@ -800,11 +839,11 @@
     const state = JSON.parse(localStorage.getItem('handbuilding-course-v1') || '{}');
     const saved = state.quizzes?.[phase];
     if (saved?.answers) {
-      for (const [id,value] of Object.entries(saved.answers)) {
+      for (const [id, value] of Object.entries(saved.answers)) {
         const input = form.querySelector(`[name="${id}"][value="${value}"]`);
         if (input) input.checked = true;
       }
       showResults(saved.answers, false, false);
-    }
-  } catch (_) {}
+    } else showQuestion(0, false);
+  } catch (_) { showQuestion(0, false); }
 })();
