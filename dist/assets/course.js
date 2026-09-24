@@ -73,49 +73,51 @@
   const nav = document.querySelector('.lesson-nav');
   const navLinks = [...document.querySelectorAll('.lesson-nav a[href^="#"]')];
   const sections = navLinks.map(link => document.getElementById(link.hash.slice(1))).filter(Boolean);
-  const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let requestedSection = null;
-  let requestedUntil = 0;
+  let trackingFrame = 0;
+
+  function navOffset() {
+    // On phones the mobile header is sticky above the sticky lesson tabs.
+    const header = document.querySelector('.mobile-head');
+    const headerHeight = header && getComputedStyle(header).display !== 'none'
+      ? header.getBoundingClientRect().height : 0;
+    return headerHeight + (nav?.getBoundingClientRect().height || 0) + 16;
+  }
+
+  function sectionHeading(section) {
+    // Modules have large top padding. Land at the heading, not at the
+    // beginning (or the end) of the padded section.
+    return section.querySelector('h1,h2') || section;
+  }
 
   function setCurrent(id) {
     navLinks.forEach(link => {
-      const current = link.hash === '#' + id;
-      link.classList.toggle('current', current);
-      if (current) link.setAttribute('aria-current', 'location');
+      const active = link.hash === '#' + id;
+      link.classList.toggle('current', active);
+      if (active) link.setAttribute('aria-current', 'location');
       else link.removeAttribute('aria-current');
     });
     const active = navLinks.find(link => link.hash === '#' + id);
-    // scrollIntoView() on a tab also scrolls ancestor containers (including
-    // the page), fighting the user's requested section navigation.
     if (nav && active) {
-      const left = active.offsetLeft - nav.offsetLeft
-        - (nav.clientWidth - active.offsetWidth) / 2;
-      nav.scrollTo({ left: Math.max(0, left), behavior: reducedMotion() ? 'auto' : 'smooth' });
+      const left = active.offsetLeft - nav.offsetLeft -
+        (nav.clientWidth - active.offsetWidth) / 2;
+      // Only move the horizontal strip, never use scrollIntoView on a tab.
+      nav.scrollLeft = Math.max(0, left);
     }
   }
 
   function sectionAtViewport() {
     if (!sections.length) return '';
-    const navBottom = nav?.getBoundingClientRect().bottom || 0;
-    const readingLine = Math.max(navBottom + 16, window.innerHeight * 0.28);
-    let active = sections[0];
+    const line = navOffset() + 24;
+    let current = sections[0];
     for (const section of sections) {
-      if (section.getBoundingClientRect().top <= readingLine) active = section;
+      if (sectionHeading(section).getBoundingClientRect().top <= line) current = section;
       else break;
     }
-    return active.id;
+    return current.id;
   }
 
-  let trackingFrame = 0;
   function trackSection() {
     trackingFrame = 0;
-    if (requestedSection && performance.now() < requestedUntil) {
-      const target = document.getElementById(requestedSection);
-      const top = target?.getBoundingClientRect().top ?? Infinity;
-      const navBottom = nav?.getBoundingClientRect().bottom || 0;
-      if (Math.abs(top - Math.max(navBottom, 0)) > 30) return;
-    }
-    requestedSection = null;
     setCurrent(sectionAtViewport());
   }
   function scheduleTracking() {
@@ -123,18 +125,17 @@
   }
 
   navLinks.forEach(link => link.addEventListener('click', event => {
-    const target = document.getElementById(link.hash.slice(1));
-    if (!target) return;
+    const section = document.getElementById(link.hash.slice(1));
+    if (!section) return;
     event.preventDefault();
-    requestedSection = target.id;
-    requestedUntil = performance.now() + (reducedMotion() ? 100 : 1400);
-    setCurrent(target.id);
+    setCurrent(section.id);
     history.pushState(null, '', link.hash);
-    const navBottom = nav?.getBoundingClientRect().bottom || 0;
-    window.scrollTo({
-      top: window.scrollY + target.getBoundingClientRect().top - navBottom - 12,
-      behavior: reducedMotion() ? 'auto' : 'smooth'
-    });
+    const heading = sectionHeading(section);
+    const absoluteTop = window.scrollY + heading.getBoundingClientRect().top;
+    // Instant positioning avoids Safari's smooth-scroll interruption and
+    // eliminates competing in-flight scroll events from the section tracker.
+    window.scrollTo({ top: Math.max(0, absoluteTop - navOffset()), behavior: 'instant' });
+    scheduleTracking();
   }));
   window.addEventListener('scroll', scheduleTracking, { passive: true });
   window.addEventListener('resize', scheduleTracking, { passive: true });
@@ -143,7 +144,7 @@
     if (sections.some(section => section.id === id)) setCurrent(id);
     else scheduleTracking();
   });
-  setCurrent(location.hash.slice(1) || sectionAtViewport());
+  setCurrent(sectionAtViewport());
 
   const trigger = document.querySelector('[data-menu-button],#menuButton');
   const drawer = document.querySelector('[data-menu-drawer],#mobileDrawer');
