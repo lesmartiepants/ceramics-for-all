@@ -758,6 +758,12 @@
   const restart = form.querySelector('[data-quiz-reset]');
   let current = 0;
 
+  function focusView(element) {
+    if (!element) return;
+    element.focus({preventScroll:true});
+    window.scrollTo({top: Math.max(0, window.scrollY + element.getBoundingClientRect().top - 112), behavior:'auto'});
+  }
+
   function showQuestion(index, focus = true) {
     current = Math.max(0, Math.min(fields.length - 1, index));
     fields.forEach((field, i) => { field.hidden = i !== current; });
@@ -766,7 +772,7 @@
     next.hidden = current === fields.length - 1;
     submit.hidden = current !== fields.length - 1;
     message.textContent = '';
-    if (focus) fields[current].querySelector('.quiz-prompt')?.focus({preventScroll:true});
+    if (focus) focusView(fields[current].querySelector('.quiz-prompt'));
   }
   fields.forEach(field => field.querySelector('.quiz-prompt').tabIndex = -1);
   previous.addEventListener('click', () => showQuestion(current - 1));
@@ -799,7 +805,7 @@
     message.textContent = '';
     summary.hidden = false;
     restart.hidden = false;
-    if (focus) summary.focus({preventScroll:true});
+    if (focus) focusView(summary);
     if (persist) {
       try {
         const key = 'handbuilding-course-v1';
