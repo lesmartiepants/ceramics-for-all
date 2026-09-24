@@ -124,27 +124,23 @@
     if (!trackingFrame) trackingFrame = requestAnimationFrame(trackSection);
   }
 
-  navLinks.forEach(link => link.addEventListener('click', event => {
-    const section = document.getElementById(link.hash.slice(1));
-    if (!section) return;
-    event.preventDefault();
-    setCurrent(section.id);
-    history.pushState(null, '', link.hash);
-    const heading = sectionHeading(section);
-    const absoluteTop = window.scrollY + heading.getBoundingClientRect().top;
-    // Instant positioning avoids Safari's smooth-scroll interruption and
-    // eliminates competing in-flight scroll events from the section tracker.
-    window.scrollTo({ top: Math.max(0, absoluteTop - navOffset()), behavior: 'instant' });
+  // Native fragment navigation is more reliable than scripted scrolling on
+  // iOS Safari, especially beneath stacked sticky navigation.
+  function syncFromHash() {
+    const id = decodeURIComponent(location.hash.slice(1));
+    if (sections.some(section => section.id === id)) {
+      setCurrent(id);
+      // Let the browser complete its anchor positioning before reading the
+      // viewport and reconciling the active tab.
+      requestAnimationFrame(scheduleTracking);
+      return;
+    }
     scheduleTracking();
-  }));
+  }
   window.addEventListener('scroll', scheduleTracking, { passive: true });
   window.addEventListener('resize', scheduleTracking, { passive: true });
-  window.addEventListener('hashchange', () => {
-    const id = location.hash.slice(1);
-    if (sections.some(section => section.id === id)) setCurrent(id);
-    else scheduleTracking();
-  });
-  setCurrent(sectionAtViewport());
+  window.addEventListener('hashchange', syncFromHash);
+  syncFromHash();
 
   const trigger = document.querySelector('[data-menu-button],#menuButton');
   const drawer = document.querySelector('[data-menu-drawer],#mobileDrawer');
