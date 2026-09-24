@@ -70,29 +70,80 @@
   });
   updateProgress();
 
-  const navLinks = [...document.querySelectorAll('.lesson-nav a')];
+  const nav = document.querySelector('.lesson-nav');
+  const navLinks = [...document.querySelectorAll('.lesson-nav a[href^="#"]')];
+  const sections = navLinks.map(link => document.getElementById(link.hash.slice(1))).filter(Boolean);
+  const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let requestedSection = null;
+  let requestedUntil = 0;
+
   function setCurrent(id) {
-    navLinks.forEach(a => {
-      const current = a.getAttribute('href') === '#' + id;
-      a.classList.toggle('current', current);
-      if (current) a.setAttribute('aria-current', 'location');
-      else a.removeAttribute('aria-current');
-      if (current) {
-        const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-        a.scrollIntoView({behavior:reduced?'auto':'smooth',block:'nearest',inline:'nearest'});
-      }
+    navLinks.forEach(link => {
+      const current = link.hash === '#' + id;
+      link.classList.toggle('current', current);
+      if (current) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
     });
+    const active = navLinks.find(link => link.hash === '#' + id);
+    // scrollIntoView() on a tab also scrolls ancestor containers (including
+    // the page), fighting the user's requested section navigation.
+    if (nav && active) {
+      const left = active.offsetLeft - nav.offsetLeft
+        - (nav.clientWidth - active.offsetWidth) / 2;
+      nav.scrollTo({ left: Math.max(0, left), behavior: reducedMotion() ? 'auto' : 'smooth' });
+    }
   }
-  const observed = navLinks.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
-  setCurrent(location.hash.slice(1) || observed[0]?.id || '');
-  if ('IntersectionObserver' in window && observed.length) {
-    const observer = new IntersectionObserver(entries => {
-      const visible = entries.filter(e => e.isIntersecting).sort((a,b) => b.intersectionRatio-a.intersectionRatio)[0];
-      if (!visible) return;
-      setCurrent(visible.target.id);
-    }, { rootMargin: '-25% 0px -60% 0px', threshold: [0,.25,.5] });
-    observed.forEach(m => observer.observe(m));
+
+  function sectionAtViewport() {
+    if (!sections.length) return '';
+    const navBottom = nav?.getBoundingClientRect().bottom || 0;
+    const readingLine = Math.max(navBottom + 16, window.innerHeight * 0.28);
+    let active = sections[0];
+    for (const section of sections) {
+      if (section.getBoundingClientRect().top <= readingLine) active = section;
+      else break;
+    }
+    return active.id;
   }
+
+  let trackingFrame = 0;
+  function trackSection() {
+    trackingFrame = 0;
+    if (requestedSection && performance.now() < requestedUntil) {
+      const target = document.getElementById(requestedSection);
+      const top = target?.getBoundingClientRect().top ?? Infinity;
+      const navBottom = nav?.getBoundingClientRect().bottom || 0;
+      if (Math.abs(top - Math.max(navBottom, 0)) > 30) return;
+    }
+    requestedSection = null;
+    setCurrent(sectionAtViewport());
+  }
+  function scheduleTracking() {
+    if (!trackingFrame) trackingFrame = requestAnimationFrame(trackSection);
+  }
+
+  navLinks.forEach(link => link.addEventListener('click', event => {
+    const target = document.getElementById(link.hash.slice(1));
+    if (!target) return;
+    event.preventDefault();
+    requestedSection = target.id;
+    requestedUntil = performance.now() + (reducedMotion() ? 100 : 1400);
+    setCurrent(target.id);
+    history.pushState(null, '', link.hash);
+    const navBottom = nav?.getBoundingClientRect().bottom || 0;
+    window.scrollTo({
+      top: window.scrollY + target.getBoundingClientRect().top - navBottom - 12,
+      behavior: reducedMotion() ? 'auto' : 'smooth'
+    });
+  }));
+  window.addEventListener('scroll', scheduleTracking, { passive: true });
+  window.addEventListener('resize', scheduleTracking, { passive: true });
+  window.addEventListener('hashchange', () => {
+    const id = location.hash.slice(1);
+    if (sections.some(section => section.id === id)) setCurrent(id);
+    else scheduleTracking();
+  });
+  setCurrent(location.hash.slice(1) || sectionAtViewport());
 
   const trigger = document.querySelector('[data-menu-button],#menuButton');
   const drawer = document.querySelector('[data-menu-drawer],#mobileDrawer');
