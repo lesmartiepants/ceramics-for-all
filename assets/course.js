@@ -106,6 +106,7 @@
   }
 
   function sectionAtViewport() {
+    if (requestedSection) return requestedSection;
     if (!sections.length) return '';
     const line = navOffset() + 24;
     let current = sections[0];
@@ -125,17 +126,6 @@
   }
 
   let requestedSection = '';
-  function sectionAtViewport() {
-    if (requestedSection) return requestedSection;
-    if (!sections.length) return '';
-    const line = navOffset() + 24;
-    let current = sections[0];
-    for (const section of sections) {
-      if (sectionHeading(section).getBoundingClientRect().top <= line) current = section;
-      else break;
-    }
-    return current.id;
-  }
 
   function alignToHeading(section, attempt = 0) {
     const heading = sectionHeading(section);
